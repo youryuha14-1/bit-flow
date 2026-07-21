@@ -293,6 +293,12 @@
 .historyItem { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid rgba(111, 216, 243, 0.09); padding: 9px 0; color: #99bac5; font-size: 0.75rem; }
 .historyItem b { color: #d5fbff; font-family: ui-monospace, monospace; }
 
+.hiddenContainer { position: fixed; bottom: 0; right: 0; width: 0; height: 0; overflow: hidden; }
+
+.textInput { width: 100%; border: 1px solid rgba(109, 213, 238, 0.2); border-radius: 10px; background: rgba(5, 29, 49, 0.58); color: #e7fff6; padding: 11px; font-size: 0.82rem; font-family: inherit; margin-top: 12px; }
+.textInput::placeholder { color: #5f8898; }
+.textInput:focus { outline: none; border-color: #5fefc1; }
+
 @media (max-width: 860px) {
   .landing, .gameGrid, .resultGrid { grid-template-columns: 1fr; }
   .landing { min-height: auto; padding: 42px 0; }

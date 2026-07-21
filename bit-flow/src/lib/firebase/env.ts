@@ -5,12 +5,7 @@ export interface FirebaseClientConfig {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
-}
-
-export interface FirebaseAdminConfig {
-  projectId: string;
-  clientEmail: string;
-  privateKey: string;
+  databaseURL: string;
 }
 
 export interface FirebaseSetupStatus {
@@ -32,18 +27,9 @@ export function getFirebaseClientConfig(): FirebaseClientConfig | null {
     storageBucket: value(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
     messagingSenderId: value(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
     appId: value(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
+    databaseURL: value(process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL),
   };
   return Object.values(config).some((entry) => !entry) ? null : (config as FirebaseClientConfig);
-}
-
-/** Private Admin credentials. Never return this object to a caller. */
-export function getFirebaseAdminConfig(): FirebaseAdminConfig | null {
-  const config = {
-    projectId: value(process.env.FIREBASE_PROJECT_ID) ?? value(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-    clientEmail: value(process.env.FIREBASE_CLIENT_EMAIL),
-    privateKey: value(process.env.FIREBASE_PRIVATE_KEY)?.replace(/\\n/g, "\n"),
-  };
-  return Object.values(config).some((entry) => !entry) ? null : (config as FirebaseAdminConfig);
 }
 
 export function getFirebaseClientSetupStatus(): FirebaseSetupStatus {
@@ -57,18 +43,7 @@ export function getFirebaseClientSetupStatus(): FirebaseSetupStatus {
       "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
       "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
       "NEXT_PUBLIC_FIREBASE_APP_ID",
-    ],
-  };
-}
-
-export function getFirebaseAdminSetupStatus(): FirebaseSetupStatus {
-  if (getFirebaseAdminConfig()) return { configured: true, missing: [] };
-  return {
-    configured: false,
-    missing: [
-      "FIREBASE_PROJECT_ID (or NEXT_PUBLIC_FIREBASE_PROJECT_ID)",
-      "FIREBASE_CLIENT_EMAIL",
-      "FIREBASE_PRIVATE_KEY",
+      "NEXT_PUBLIC_FIREBASE_DATABASE_URL",
     ],
   };
 }

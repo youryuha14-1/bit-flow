@@ -11,12 +11,18 @@ import {
   getRamUsage,
 } from "@/lib/game";
 import type { GameState, RoundConfig, RoundEvent } from "@/lib/game";
+import type { CompatMultiFactorInfo, CompatMultiFactorResolver, CompatPhoneMultiFactorInfo } from "@/lib/firebase/client";
+import type { PublicUserProfile } from "@/lib/firebase/types";
 import styles from "./BitFlowApp.module.css";
 
 type Screen = "home" | "game" | "result" | "quiz" | "board";
-type User = { uid: string; displayName: string | null };
+type User = { uid: string; displayName: string | null; photoURL: string | null };
 type Entry = { name: string; score: number; packets: number };
 type Answer = { questionId: string; answerIndex: number };
+
+function toProfile(user: User): PublicUserProfile {
+  return { uid: user.uid, displayName: user.displayName || "Bit Flow Player", photoURL: user.photoURL };
+}
 
 const quiz = [
   ["byte", "1바이트(Byte)는 몇 비트(Bit)일까요?", ["4비트", "8비트", "16비트", "32비트"], 1],
@@ -29,6 +35,7 @@ const allTime: Entry[] = [{ name: "Nova", score: 632, packets: 3 }, { name: "Jin
 
 const cls = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 const time = (ms: number) => { const seconds = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0"); };
+const isValidPhone = (value: string) => /^\+?[0-9\s-]{9,16}$/.test(value.trim());
 
 export default function BitFlowApp() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -46,6 +53,15 @@ export default function BitFlowApp() {
   const [question, setQuestion] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [history, setHistory] = useState<Entry[]>([]);
+  const [phoneFactors, setPhoneFactors] = useState<CompatMultiFactorInfo[]>([]);
+  const [mfaResolver, setMfaResolver] = useState<CompatMultiFactorResolver | null>(null);
+  const [mfaVerificationId, setMfaVerificationId] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState("");
+  const [enrollPhone, setEnrollPhone] = useState("");
+  const [enrollVerificationId, setEnrollVerificationId] = useState("");
+  const [enrollCode, setEnrollCode] = useState("");
+  const [enrollError, setEnrollError] = useState("");
   const started = useRef(0);
   const submitted = useRef(false);
   const lastTick = useRef(-1);
@@ -60,6 +76,7 @@ export default function BitFlowApp() {
   const activeScreen: Screen = screen === "game" && game && game.status !== "playing" ? "result" : screen;
   const selectedBit = game ? getAvailableBitTokens(game).find((item) => item.id === selected) : null;
   const bitId = selectedBit?.id || bit?.id || "";
+  const mfaFactor = phoneFactors[0] as CompatPhoneMultiFactorInfo | undefined;
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -67,10 +84,15 @@ export default function BitFlowApp() {
       const nextConfigured = firebase.isFirebaseClientConfigured();
       setConfigured(nextConfigured);
       setReady(true);
-      if (nextConfigured) unsubscribe = firebase.observeAuthState((next) => setUser(next ? { uid: next.uid, displayName: next.displayName } : null));
+      if (nextConfigured) unsubscribe = firebase.observeAuthState((next) => setUser(next ? { uid: next.uid, displayName: next.displayName, photoURL: next.photoURL } : null));
     }).catch(() => setReady(true));
     return () => unsubscribe?.();
   }, []);
+
+  useEffect(() => {
+    if (!configured || !user || activeScreen !== "board") return;
+    import("@/lib/firebase/client").then((firebase) => setPhoneFactors(firebase.getEnrolledPhoneFactors()));
+  }, [configured, user, activeScreen]);
 
   useEffect(() => {
     if (!config || game?.status !== "playing" || screen !== "game") return;
@@ -90,18 +112,101 @@ export default function BitFlowApp() {
   useEffect(() => {
     if (activeScreen !== "result" || !roundId || !user || submitted.current) return;
     submitted.current = true;
-    import("@/lib/firebase/client").then(async (firebase) => {
-      const token = await firebase.getCurrentUserIdToken();
-      await fetch("/api/rounds/submit", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ roundId, events }) });
-    }).catch(() => setMessage("Firebase 설정 후 점수 검증과 온라인 기록이 자동으로 활성화됩니다."));
+    import("@/lib/firebase/data").then((data) => data.submitRound(toProfile(user), roundId, events))
+      .catch(() => setMessage("점수 저장에 실패했습니다. 네트워크 상태를 확인해주세요."));
   }, [activeScreen, events, roundId, user]);
 
   async function signIn() {
     try {
       const firebase = await import("@/lib/firebase/client");
       await firebase.signInWithGoogle();
-    } catch {
+    } catch (error) {
+      const firebase = await import("@/lib/firebase/client");
+      if (firebase.isMultiFactorError(error)) {
+        try {
+          const { verificationId } = await firebase.startPhoneMfaChallenge(error.resolver, "mfa-recaptcha-container");
+          setMfaResolver(error.resolver);
+          setMfaVerificationId(verificationId);
+          setMfaCode("");
+          setMfaError("");
+        } catch {
+          setMessage("인증번호 전송에 실패했습니다.");
+        }
+        return;
+      }
       setMessage("Google 로그인에 실패했습니다.");
+    }
+  }
+
+  async function confirmMfaSignIn() {
+    if (!mfaResolver) return;
+    try {
+      const firebase = await import("@/lib/firebase/client");
+      await firebase.confirmPhoneMfaChallenge(mfaResolver, mfaVerificationId, mfaCode);
+      setMfaResolver(null);
+      setMfaVerificationId("");
+      setMfaCode("");
+      setMfaError("");
+    } catch {
+      setMfaError("인증번호가 올바르지 않습니다. 다시 시도해주세요.");
+    }
+  }
+
+  async function resendMfaChallenge() {
+    if (!mfaResolver) return;
+    setMfaError("");
+    try {
+      const firebase = await import("@/lib/firebase/client");
+      const { verificationId } = await firebase.startPhoneMfaChallenge(mfaResolver, "mfa-recaptcha-container");
+      setMfaVerificationId(verificationId);
+      setMfaCode("");
+    } catch {
+      setMfaError("인증번호 재전송에 실패했습니다.");
+    }
+  }
+
+  function cancelMfaChallenge() {
+    setMfaResolver(null);
+    setMfaVerificationId("");
+    setMfaCode("");
+    setMfaError("");
+  }
+
+  async function sendMfaEnrollCode() {
+    setEnrollError("");
+    try {
+      const firebase = await import("@/lib/firebase/client");
+      const { verificationId } = await firebase.startPhoneMfaEnrollment(enrollPhone, "mfa-recaptcha-container");
+      setEnrollVerificationId(verificationId);
+      setEnrollCode("");
+    } catch (error) {
+      setEnrollError(error instanceof Error ? error.message : "인증번호 전송에 실패했습니다.");
+    }
+  }
+
+  async function confirmMfaEnroll() {
+    setEnrollError("");
+    try {
+      const firebase = await import("@/lib/firebase/client");
+      await firebase.confirmPhoneMfaEnrollment(enrollVerificationId, enrollCode);
+      setPhoneFactors(firebase.getEnrolledPhoneFactors());
+      setEnrollPhone("");
+      setEnrollVerificationId("");
+      setEnrollCode("");
+      setMessage("2단계 인증(전화번호)을 등록했습니다.");
+    } catch (error) {
+      setEnrollError(error instanceof Error ? error.message : "인증번호가 올바르지 않습니다.");
+    }
+  }
+
+  async function removeMfaFactor(uid: string) {
+    try {
+      const firebase = await import("@/lib/firebase/client");
+      await firebase.unenrollPhoneMfa(uid);
+      setPhoneFactors(firebase.getEnrolledPhoneFactors());
+      setMessage("2단계 인증을 해제했습니다.");
+    } catch {
+      setMessage("2단계 인증 해제에 실패했습니다.");
     }
   }
 
@@ -115,13 +220,10 @@ export default function BitFlowApp() {
         return;
       }
       try {
-        const firebase = await import("@/lib/firebase/client");
-        const token = await firebase.getCurrentUserIdToken();
-        const response = await fetch("/api/rounds/start", { method: "POST", headers: { Authorization: "Bearer " + token } });
-        const data = await response.json() as { config?: RoundConfig; roundId?: string; error?: { message?: string } };
-        if (!response.ok || !data.config || !data.roundId) throw new Error(data.error?.message || "라운드를 만들지 못했습니다.");
-        nextConfig = data.config;
-        nextId = data.roundId;
+        const data = await import("@/lib/firebase/data");
+        const started = await data.startRound(toProfile(user));
+        nextConfig = started.config;
+        nextId = started.roundId;
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "온라인 라운드 연결에 실패했습니다.");
         return;
@@ -177,9 +279,13 @@ export default function BitFlowApp() {
     const correct = answers.reduce((sum, value) => sum + Number(quiz.find((item) => item[0] === value.questionId)?.[3] === value.answerIndex), 0);
     if (roundId && user) {
       try {
-        const firebase = await import("@/lib/firebase/client");
-        const token = await firebase.getCurrentUserIdToken();
-        await fetch("/api/quiz", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ roundId, answers }) });
+        const data = await import("@/lib/firebase/data");
+        const gradedAnswers = answers.map((item) => ({
+          questionId: item.questionId,
+          answerIndex: item.answerIndex,
+          isCorrect: quiz.find((entry) => entry[0] === item.questionId)?.[3] === item.answerIndex,
+        }));
+        await data.submitQuizAttempt(toProfile(user), roundId, { score: correct, answers: gradedAnswers });
       } catch {}
     }
     setHistory((items) => [{ name, score: game?.score || 0, packets: game?.packetsCompleted || 0 }, ...items].slice(0, 4));
@@ -190,9 +296,8 @@ export default function BitFlowApp() {
   async function erase() {
     if (user) {
       try {
-        const firebase = await import("@/lib/firebase/client");
-        const token = await firebase.getCurrentUserIdToken();
-        await fetch("/api/account/data", { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+        const data = await import("@/lib/firebase/data");
+        await data.deleteAccountData(user.uid);
       } catch {}
     }
     setHistory([]);
@@ -205,14 +310,16 @@ export default function BitFlowApp() {
   const boards: Array<[string, Entry[]]> = [["TODAY", daily], ["ALL TIME", allTime]];
 
   return <div className={styles.app}>
+    <div id="mfa-recaptcha-container" className={styles.hiddenContainer} />
     <header className={styles.header}>
       <button className={styles.brand} type="button" onClick={() => setScreen("home")}><span className={styles.brandMark}>01</span><span className={styles.brandText}>BIT FLOW<small>RAM LEARNING LAB</small></span></button>
       <div className={styles.headerRight}><nav className={styles.nav}><button className={styles.navButton} type="button" onClick={() => setScreen("home")}>실험실</button><button className={styles.navButton} type="button" onClick={() => setScreen("board")}>리더보드</button></nav>{user ? <span className={styles.profilePill}><span className={styles.avatar}>{name.slice(0, 1)}</span><span>{name}</span></span> : <button className={styles.ghostButton} type="button" onClick={configured ? signIn : start}>{configured ? "Google 로그인" : "로컬 데모"}</button>}</div>
     </header>
     <main className={styles.main}>
       {message ? <div className={styles.alert} role="status">{message}</div> : null}
+      {mfaResolver ? <section className={styles.resultGrid}><div className={styles.panel}><p className={styles.kicker}>2단계 인증</p><h1 className={styles.sectionTitle}>휴대폰으로 전송된 인증번호를 입력하세요.</h1><p className={styles.sectionSub}>Google 계정 로그인을 완료하려면 등록된 전화번호로 받은 인증번호를 입력하세요.</p>{mfaError ? <div className={styles.alert} role="status">{mfaError}</div> : null}<input className={styles.textInput} inputMode="numeric" maxLength={6} value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} placeholder="6자리 인증번호" /><div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={mfaCode.trim().length < 6} onClick={confirmMfaSignIn}>확인</button><button className={styles.secondaryButton} type="button" onClick={resendMfaChallenge}>다시 보내기</button><button className={styles.secondaryButton} type="button" onClick={cancelMfaChallenge}>취소</button></div></div></section> : <>
       {activeScreen === "home" ? <section className={styles.landing}>
-        <div><p className={styles.kicker}>MEMORY CONTROLLER TRAINING</p><h1 className={styles.heroTitle}>0과 1이<br /><span>흐르는 곳.</span></h1><p className={styles.heroCopy}>떨어지는 비트를 알맞은 RAM 주소로 보내고, 8비트 패킷을 완성하세요. 공간을 비우고 데이터를 압축하며 RAM의 휘발성을 직접 실험합니다.</p><div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={!ready} onClick={start}>{configured && !user ? "Google 로그인 후 시작" : "RAM 실험 시작"}</button><button className={styles.secondaryButton} type="button" onClick={() => setScreen("board")}>순위와 내 기록 보기</button></div>{!configured && ready ? <div className={styles.setupBox}>현재는 <b>로컬 데모 모드</b>입니다. 실제 로그인·온라인 기록을 활성화하려면 <code>.env.local</code>에 Firebase 웹 앱 설정값을 넣어주세요.</div> : null}<div className={styles.heroMeta}><span>90초 실시간 라운드</span><span>8비트 ASCII 패킷</span><span>오늘·역대 순위</span></div></div>
+        <div><p className={styles.kicker}>MEMORY CONTROLLER TRAINING</p><h1 className={styles.heroTitle}>0과 1이<br /><span>흐르는 곳.</span></h1><p className={styles.heroCopy}>떨어지는 비트를 알맞은 RAM 주소로 보내고, 8비트 패킷을 완성하세요. 공간을 비우고 데이터를 압축하며 RAM의 휘발성을 직접 실험합니다.</p><div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={!ready} onClick={start}>{configured && !user ? "Google 로그인 후 시작" : "RAM 실험 시작"}</button><button className={styles.secondaryButton} type="button" onClick={() => setScreen("board")}>순위와 내 기록 보기</button></div>{!configured && ready ? <div className={styles.setupBox}>현재는 <b>로컬 데모 모드</b>입니다. 실제 로그인·온라인 기록을 활성화하려면 <code>.env</code>에 Firebase 웹 앱 설정값을 넣어주세요.</div> : null}<div className={styles.heroMeta}><span>90초 실시간 라운드</span><span>8비트 ASCII 패킷</span><span>오늘·역대 순위</span></div></div>
         <aside className={styles.chipPreview}><div className={styles.previewTop}><span>RAM // CHANNEL_01</span><i className={styles.liveDot} /></div><div className={styles.previewTarget}><span>현재 목표 패킷</span><b>01000001</b><span>decimal 65 · character A</span></div><div className={styles.previewGrid}>{Array.from({ length: 8 }, (_, index) => <span key={index} className={cls(styles.previewCell, index < 5 && styles.on)} />)}</div><div className={styles.previewFooter}><span>용량 13 / 24</span><span>안정적</span></div></aside>
       </section> : null}
 
@@ -229,7 +336,8 @@ export default function BitFlowApp() {
 
       {activeScreen === "quiz" ? <section className={styles.resultGrid}><div className={styles.panel}><p className={styles.kicker}>KNOWLEDGE CHECK</p><h1 className={styles.sectionTitle}>방금 처리한 데이터 흐름을 떠올려 보세요.</h1><p className={styles.quizProgress}>QUESTION {question + 1}/3</p><h2 className={styles.sectionTitle}>{quizItem[1]}</h2><div className={styles.quizOptions}>{quizItem[2].map((option, index) => <button key={option} className={cls(styles.quizOption, quizAnswer === index && styles.selected)} type="button" onClick={() => answer(index)}>{String.fromCharCode(65 + index)}. {option}</button>)}</div><div className={styles.buttonRow}><button className={styles.secondaryButton} type="button" disabled={question === 0} onClick={() => setQuestion((value) => value - 1)}>이전</button>{question < 2 ? <button className={styles.primaryButton} type="button" disabled={quizAnswer === undefined} onClick={() => setQuestion((value) => value + 1)}>다음 문항</button> : <button className={styles.primaryButton} type="button" disabled={answers.length !== 3} onClick={finishQuiz}>결과 저장하기</button>}</div></div><aside className={styles.panel}><h2 className={styles.sectionTitle}>오늘의 핵심 개념</h2><ol className={styles.instructionList}><li><span className={styles.step}>01</span><span>8개의 비트가 모여 1바이트가 됩니다.</span></li><li><span className={styles.step}>02</span><span>RAM은 주소별로 데이터를 임시 보관합니다.</span></li><li><span className={styles.step}>03</span><span>전원이 끊기면 RAM은 비워집니다.</span></li></ol></aside></section> : null}
 
-      {activeScreen === "board" ? <section className={styles.sideStack}><div className={styles.panel}><p className={styles.kicker}>PUBLIC DATA FLOW</p><h1 className={styles.sectionTitle}>리더보드</h1><p className={styles.sectionSub}>서버에서 재검증된 성공 라운드만 공개 순위에 반영됩니다.</p></div><div className={styles.leaderboard}>{boards.map(([title, board]) => <div className={styles.panel} key={title}><h2 className={styles.sectionTitle}>{title}</h2><table className={styles.table}><thead><tr><th>순위</th><th>플레이어</th><th>점수</th><th>패킷</th></tr></thead><tbody>{board.map((entry, index) => <tr key={entry.name}><td className={styles.rank}>#{index + 1}</td><td>{entry.name}</td><td>{entry.score}</td><td>{entry.packets}/3</td></tr>)}</tbody></table></div>)}</div><div className={styles.panel}><div className={styles.targetHeader}><div><h2 className={styles.sectionTitle}>내 실험 기록</h2><p className={styles.sectionSub}>{user ? name + " 계정에 저장된 최근 라운드입니다." : "로컬 데모 기록입니다."}</p></div>{user ? <button className={styles.dangerButton} type="button" onClick={erase}>기록 전체 삭제</button> : null}</div><div className={styles.history}>{history.length ? history.map((entry, index) => <div className={styles.historyItem} key={index}><span>{entry.name} · 패킷 {entry.packets}/3</span><b>{entry.score}점</b></div>) : <p className={styles.emptyState}>아직 저장된 실험 기록이 없습니다. 첫 라운드를 시작해 보세요.</p>}</div></div></section> : null}
+      {activeScreen === "board" ? <section className={styles.sideStack}><div className={styles.panel}><p className={styles.kicker}>PUBLIC DATA FLOW</p><h1 className={styles.sectionTitle}>리더보드</h1><p className={styles.sectionSub}>성공한 라운드만 오늘·역대 공개 순위에 반영됩니다.</p></div><div className={styles.leaderboard}>{boards.map(([title, board]) => <div className={styles.panel} key={title}><h2 className={styles.sectionTitle}>{title}</h2><table className={styles.table}><thead><tr><th>순위</th><th>플레이어</th><th>점수</th><th>패킷</th></tr></thead><tbody>{board.map((entry, index) => <tr key={entry.name}><td className={styles.rank}>#{index + 1}</td><td>{entry.name}</td><td>{entry.score}</td><td>{entry.packets}/3</td></tr>)}</tbody></table></div>)}</div><div className={styles.panel}><div className={styles.targetHeader}><div><h2 className={styles.sectionTitle}>내 실험 기록</h2><p className={styles.sectionSub}>{user ? name + " 계정에 저장된 최근 라운드입니다." : "로컬 데모 기록입니다."}</p></div>{user ? <button className={styles.dangerButton} type="button" onClick={erase}>기록 전체 삭제</button> : null}</div><div className={styles.history}>{history.length ? history.map((entry, index) => <div className={styles.historyItem} key={index}><span>{entry.name} · 패킷 {entry.packets}/3</span><b>{entry.score}점</b></div>) : <p className={styles.emptyState}>아직 저장된 실험 기록이 없습니다. 첫 라운드를 시작해 보세요.</p>}</div></div>{configured && user ? <div className={styles.panel}><div className={styles.targetHeader}><div><h2 className={styles.sectionTitle}>2단계 인증 (전화번호)</h2><p className={styles.sectionSub}>Google 로그인 후 전화번호 인증을 추가하면 다음 로그인부터 인증번호를 함께 입력합니다.</p></div></div>{mfaFactor ? <div className={styles.historyItem}><span>{mfaFactor.phoneNumber || "등록된 전화번호"}</span><button className={styles.dangerButton} type="button" onClick={() => removeMfaFactor(mfaFactor.uid)}>2단계 인증 해제</button></div> : <div className={styles.history}>{enrollError ? <div className={styles.alert} role="status">{enrollError}</div> : null}{enrollVerificationId ? <><input className={styles.textInput} inputMode="numeric" maxLength={6} value={enrollCode} onChange={(event) => setEnrollCode(event.target.value)} placeholder="인증번호 6자리" /><div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={enrollCode.trim().length < 6} onClick={confirmMfaEnroll}>등록 완료</button></div></> : <><input className={styles.textInput} type="tel" value={enrollPhone} onChange={(event) => setEnrollPhone(event.target.value)} placeholder="+82 10-1234-5678" /><div className={styles.buttonRow}><button className={styles.primaryButton} type="button" disabled={!isValidPhone(enrollPhone)} onClick={sendMfaEnrollCode}>인증번호 받기</button></div></>}</div>}</div> : null}</section> : null}
+      </>}
     </main>
   </div>;
 }
