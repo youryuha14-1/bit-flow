@@ -100,26 +100,6 @@
   transform: translateY(-1px);
 }
 
-.profilePill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #b7f7e4;
-  font-size: 0.8rem;
-}
-
-.avatar {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #26e0ae, #208fcf);
-  color: #001512;
-  font-size: 0.73rem;
-  font-weight: 900;
-}
-
 .main {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
@@ -234,7 +214,7 @@
 .packetBinary { color: #77f3d1; font-family: ui-monospace, monospace; font-size: clamp(1.25rem, 3.3vw, 2rem); font-weight: 800; letter-spacing: 0.12em; }
 .packetInfo { color: #7ba5b5; font-size: 0.73rem; }
 
-.fallingLane { min-height: 132px; position: relative; overflow: hidden; display: grid; place-items: center; border: 1px dashed rgba(102, 235, 255, 0.28); border-radius: 17px; background: linear-gradient(90deg, rgba(27, 108, 125, 0.07), transparent 25%, rgba(27, 108, 125, 0.07)); }
+.fallingLane { min-height: 132px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 30px 12px 12px; border: 1px dashed rgba(102, 235, 255, 0.28); border-radius: 17px; background: linear-gradient(90deg, rgba(27, 108, 125, 0.07), transparent 25%, rgba(27, 108, 125, 0.07)); }
 .fallingLane::before { content: "incoming data stream"; position: absolute; top: 9px; left: 13px; color: #4e7e92; font-family: ui-monospace, monospace; font-size: 0.61rem; letter-spacing: 0.1em; }
 .token { min-width: 88px; padding: 12px 13px; border: 1px solid #64f4c5; border-radius: 13px; background: linear-gradient(135deg, rgba(44, 227, 170, 0.95), rgba(20, 113, 151, 0.95)); color: #001b1e; font-family: ui-monospace, monospace; font-size: 1.45rem; font-weight: 900; box-shadow: 0 0 30px rgba(78, 244, 190, 0.38); text-align: center; user-select: none; }
 .token.special { min-width: 124px; border-color: #f7ce74; background: linear-gradient(135deg, #f5d26f, #e68450); color: #342100; font-family: inherit; font-size: 0.83rem; }
@@ -264,9 +244,6 @@
 .step { display: grid; width: 20px; height: 20px; place-items: center; border: 1px solid rgba(96, 239, 199, 0.42); border-radius: 50%; color: #5cebc1; font-family: ui-monospace, monospace; font-size: 0.64rem; }
 
 .alert { border-left: 3px solid #ffd271; border-radius: 8px; background: rgba(191, 132, 37, 0.12); color: #d3bc82; padding: 11px; font-size: 0.73rem; line-height: 1.5; }
-.setupBox { border: 1px solid rgba(255, 208, 113, 0.33); border-radius: 14px; background: rgba(106, 72, 14, 0.15); padding: 13px; color: #d5bc80; font-size: 0.76rem; line-height: 1.55; }
-.setupBox code { color: #fff0bf; font-family: ui-monospace, monospace; font-size: 0.71rem; }
-
 .resultGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr); gap: 17px; align-items: start; }
 .resultScore { margin: 20px 0 4px; color: #5ff0c5; font-family: ui-monospace, monospace; font-size: clamp(3.1rem, 8vw, 5.4rem); font-weight: 900; letter-spacing: -0.1em; line-height: 0.9; }
 .resultLabel { color: #82adbb; font-size: 0.79rem; }
@@ -283,21 +260,10 @@
 .quizOption.selected { border-color: #5fefc1; background: rgba(31, 142, 107, 0.25); color: #e7fff6; }
 .quizProgress { color: #69a3b3; font-family: ui-monospace, monospace; font-size: 0.69rem; }
 
-.leaderboard { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.table { width: 100%; margin-top: 13px; border-collapse: collapse; color: #b3d3dd; font-size: 0.78rem; }
-.table th { color: #628c9d; font-weight: 700; text-align: left; padding: 0 6px 8px; }
-.table td { border-top: 1px solid rgba(112, 216, 242, 0.1); padding: 9px 6px; }
-.rank { color: #f3d577; font-family: ui-monospace, monospace; }
 .emptyState { color: #6a91a0; font-size: 0.78rem; line-height: 1.6; }
 .history { display: grid; gap: 8px; margin-top: 15px; }
 .historyItem { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid rgba(111, 216, 243, 0.09); padding: 9px 0; color: #99bac5; font-size: 0.75rem; }
 .historyItem b { color: #d5fbff; font-family: ui-monospace, monospace; }
-
-.hiddenContainer { position: fixed; bottom: 0; right: 0; width: 0; height: 0; overflow: hidden; }
-
-.textInput { width: 100%; border: 1px solid rgba(109, 213, 238, 0.2); border-radius: 10px; background: rgba(5, 29, 49, 0.58); color: #e7fff6; padding: 11px; font-size: 0.82rem; font-family: inherit; margin-top: 12px; }
-.textInput::placeholder { color: #5f8898; }
-.textInput:focus { outline: none; border-color: #5fefc1; }
 
 @media (max-width: 860px) {
   .landing, .gameGrid, .resultGrid { grid-template-columns: 1fr; }
@@ -311,7 +277,6 @@
   .header, .main { width: min(100% - 22px, 1180px); }
   .header { padding: 13px 0; }
   .nav { display: none; }
-  .profilePill > span { display: none; }
   .heroTitle { font-size: clamp(2.8rem, 17vw, 4.1rem); }
   .panel, .chipPreview { border-radius: 17px; padding: 14px; }
   .packetBinary { letter-spacing: 0.07em; }
@@ -319,7 +284,6 @@
   .slot { border-radius: 6px; }
   .utility { grid-template-columns: 1fr; }
   .utilityPort { min-height: 58px; }
-  .leaderboard { grid-template-columns: 1fr; }
   .buttonRow { display: grid; }
   .primaryButton, .secondaryButton { width: 100%; }
 }

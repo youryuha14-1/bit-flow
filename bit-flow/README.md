@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bit Flow
 
-## Getting Started
+비트와 RAM의 동작 원리를 익히는 Next.js 기반 교육용 퍼즐 게임입니다. 게임이 끝나면 렛츠코딩 라운지 SDK를 통해 최종 점수를 랭킹에 제출합니다.
 
-First, run the development server:
+## 로컬 실행
+
+Node.js 20.9 이상이 필요합니다.
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 [http://localhost:3000](http://localhost:3000)을 엽니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+프로덕션 빌드는 다음 명령으로 확인합니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+랭킹 SDK는 앱의 루트 레이아웃에서 자동으로 불러옵니다. Firebase 설정, Firebase 환경변수, 별도 `.env` 파일은 필요하지 않습니다. 로컬 환경에서 SDK를 불러올 수 없거나 라운지에 로그인하지 않은 경우에는 결과 화면에 제출 오류가 표시되며 게임 자체는 계속 동작합니다.
 
-To learn more about Next.js, take a look at the following resources:
+## Vercel 배포
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. 이 Git 저장소를 Vercel 프로젝트로 가져옵니다.
+2. 프로젝트의 **Root Directory**를 `bit-flow`로 지정합니다.
+3. Framework Preset은 **Next.js** 자동 감지를 사용합니다.
+4. Build Command와 Output Directory는 직접 덮어쓰지 않고 Vercel 기본값을 사용합니다.
+5. 별도의 환경변수나 `vercel.json` 없이 배포합니다.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Vercel은 `package.json`의 `npm run build`를 사용해 Next.js 앱을 빌드하고 배포합니다.

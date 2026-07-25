@@ -25,8 +25,10 @@ export const ROUND_DURATION_MS = 90_000;
 export const TARGET_SLOT_CAPACITY = 8;
 export const BUFFER_CAPACITY = 16;
 export const TARGET_COUNT = 3;
-export const BIT_INTERVAL_MS = 2_100;
-export const BIT_FALL_DURATION_MS = 5_000;
+export const BIT_INTERVAL_MS = 1_000;
+// A queued bit stays valid for the full round. The UI presents one queued bit
+// at a time, so expiring hidden overlapping tokens would unfairly corrupt RAM.
+export const BIT_FALL_DURATION_MS = ROUND_DURATION_MS;
 export const DELAY_DURATION_MS = 6_000;
 export const SPECIAL_LIFETIME_MS = 10_000;
 
@@ -105,11 +107,13 @@ export function createRoundConfig(
   }
 
   const targets = characters.map(targetFromCharacter);
-  const stream = targets
-    .flatMap((target) => target.bits)
-    .map((value, index) => ({
+  const packetBits = targets.flatMap((target) => target.bits);
+  // Keep the receiver active for the whole round. A finite 24-bit stream made
+  // the round impossible to finish after even one missed bit.
+  const streamLength = Math.ceil(durationMs / bitIntervalMs);
+  const stream = Array.from({ length: streamLength }, (_, index) => ({
       id: `bit-${index + 1}`,
-      value,
+      value: packetBits[index % packetBits.length],
       spawnAtMs: index * bitIntervalMs,
       fallDurationMs: bitFallDurationMs,
     }));
