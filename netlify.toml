@@ -1,0 +1,7 @@
+[build]
+  base = "bit-flow"
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "22"
